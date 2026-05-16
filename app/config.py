@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     devin_default_session_id: str = Field(default="")
     data_dir: Path = Field(default_factory=default_data_dir)
     devin_base_url: str = Field(default="https://api.devin.ai/v3")
+    devin_response_poll_attempts: int = Field(default=20)
+    devin_response_poll_interval_seconds: float = Field(default=3.0)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

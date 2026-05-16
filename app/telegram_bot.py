@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -123,11 +124,13 @@ class BotService:
         if session_id:
             session_id = normalize_session_id(session_id)
             self.store.set_session(message.chat_id, session_id)
+            known_event_ids = await self._safe_devin_event_ids(session_id)
             await self.devin.send_message(session_id, text)
             await self.telegram.send_message(
                 message.chat_id,
                 f"Terkirim ke Devin: {session_web_url(session_id)}",
             )
+            self._schedule_response_relay(message.chat_id, session_id, known_event_ids)
             return
 
         session_id = await self.devin.create_session(text)
@@ -136,6 +139,41 @@ class BotService:
             message.chat_id,
             f"Sesi Devin baru dibuat: {session_web_url(session_id)}",
         )
+        self._schedule_response_relay(message.chat_id, session_id, set())
+
+    async def _safe_devin_event_ids(self, session_id: str) -> set[str]:
+        try:
+            data = await self.devin.list_messages(session_id)
+        except (DevinConfigurationError, httpx.HTTPError):
+            return set()
+        return collect_devin_event_ids(data)
+
+    def _schedule_response_relay(
+        self,
+        chat_id: int,
+        session_id: str,
+        known_event_ids: set[str],
+    ) -> None:
+        if self.settings.devin_response_poll_attempts <= 0:
+            return
+        asyncio.create_task(self._relay_next_devin_response(chat_id, session_id, known_event_ids))
+
+    async def _relay_next_devin_response(
+        self,
+        chat_id: int,
+        session_id: str,
+        known_event_ids: set[str],
+    ) -> None:
+        for _ in range(self.settings.devin_response_poll_attempts):
+            await asyncio.sleep(self.settings.devin_response_poll_interval_seconds)
+            try:
+                data = await self.devin.list_messages(session_id)
+                response = extract_new_devin_response(data, known_event_ids)
+                if response:
+                    await self.telegram.send_message(chat_id, response)
+                    return
+            except (DevinConfigurationError, TelegramConfigurationError, httpx.HTTPError):
+                return
 
     async def _process_command(self, chat_id: int, text: str) -> None:
         parts = text.split(maxsplit=1)
@@ -151,6 +189,7 @@ class BotService:
             session_id = await self.devin.create_session(prompt)
             self.store.set_session(chat_id, session_id)
             await self.telegram.send_message(chat_id, f"Sesi baru: {session_web_url(session_id)}")
+            self._schedule_response_relay(chat_id, session_id, set())
             return
 
         if command == "/session":
@@ -217,6 +256,68 @@ def extract_int(value: JSONValue) -> int | None:
         return value
     if isinstance(value, str) and value.strip().lstrip("-").isdigit():
         return int(value)
+    return None
+
+
+def extract_message_items(data: JSONObject) -> list[JSONObject]:
+    items_value = data.get("items") or data.get("messages")
+    if not isinstance(items_value, list):
+        return []
+
+    items: list[JSONObject] = []
+    for item_value in items_value:
+        if isinstance(item_value, dict):
+            items.append(item_value)
+    return items
+
+
+def is_devin_message(item: JSONObject) -> bool:
+    source_value = item.get("source")
+    if isinstance(source_value, str) and source_value.lower() == "devin":
+        return True
+
+    role_value = item.get("role")
+    return isinstance(role_value, str) and role_value.lower() == "assistant"
+
+
+def extract_event_id(item: JSONObject) -> str | None:
+    event_id_value = item.get("event_id") or item.get("id")
+    if isinstance(event_id_value, str):
+        return event_id_value
+    return None
+
+
+def extract_message_text(item: JSONObject) -> str | None:
+    message_value = item.get("message") or item.get("content") or item.get("text")
+    if not isinstance(message_value, str):
+        return None
+    message = message_value.strip()
+    if not message:
+        return None
+    return message
+
+
+def collect_devin_event_ids(data: JSONObject) -> set[str]:
+    event_ids: set[str] = set()
+    for item in extract_message_items(data):
+        if not is_devin_message(item):
+            continue
+        event_id = extract_event_id(item)
+        if event_id:
+            event_ids.add(event_id)
+    return event_ids
+
+
+def extract_new_devin_response(data: JSONObject, known_event_ids: set[str]) -> str | None:
+    for item in extract_message_items(data):
+        if not is_devin_message(item):
+            continue
+        event_id = extract_event_id(item)
+        if event_id in known_event_ids:
+            continue
+        message = extract_message_text(item)
+        if message:
+            return message
     return None
 
 

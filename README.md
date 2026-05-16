@@ -6,7 +6,7 @@ Telegram bot bridge for chatting with Devin from Telegram.
 
 - Receives Telegram messages through a FastAPI webhook.
 - Creates or reuses a Devin session for each Telegram chat.
-- Sends normal Telegram messages to Devin.
+- Sends normal Telegram messages to Devin and relays new Devin replies back to Telegram.
 - Supports `/new`, `/session`, `/where`, `/messages`, and `/help` commands.
 - Stores chat-to-session mappings in SQLite.
 
@@ -23,6 +23,8 @@ Create these environment variables before running the service:
 | `TELEGRAM_ALLOWED_USER_IDS` | Optional comma-separated Telegram user IDs allowed to use the bot. |
 | `DEVIN_DEFAULT_SESSION_ID` | Optional existing Devin session ID to use before `/new` is called. |
 | `DATA_DIR` | Optional data directory. Defaults to `/data` when that volume exists, otherwise `data`. |
+| `DEVIN_RESPONSE_POLL_ATTEMPTS` | Optional number of polling attempts for relaying Devin replies. Defaults to `20`. |
+| `DEVIN_RESPONSE_POLL_INTERVAL_SECONDS` | Optional delay between reply polling attempts. Defaults to `3.0`. |
 
 Create the Devin API key from Devin Settings → Service users. The service user needs `ManageOrgSessions` and `ViewOrgSessions`; use the Member role for normal automation.
 
@@ -50,4 +52,4 @@ poetry run python scripts/set_telegram_webhook.py https://your-public-url.exampl
 - `/where` — show the current Devin session link.
 - `/messages` — fetch recent messages from the current Devin session.
 
-Normal text messages are sent to the current Devin session. If no session is selected and `DEVIN_DEFAULT_SESSION_ID` is unset, the first message creates a new Devin session.
+Normal text messages are sent to the current Devin session. The bot then polls for the next new Devin reply and sends it back to Telegram. If no session is selected and `DEVIN_DEFAULT_SESSION_ID` is unset, the first message creates a new Devin session.
