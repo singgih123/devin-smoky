@@ -22,7 +22,7 @@ Create these environment variables before running the service:
 | `TELEGRAM_WEBHOOK_SECRET` | Random secret sent by Telegram in the webhook header. |
 | `TELEGRAM_ALLOWED_USER_IDS` | Optional comma-separated Telegram user IDs allowed to use the bot. |
 | `DEVIN_DEFAULT_SESSION_ID` | Optional existing Devin session ID to use before `/new` is called. |
-| `DATA_DIR` | Optional data directory. Defaults to `data`; use `/data` when deploying with a persistent volume. |
+| `DATA_DIR` | Optional data directory. Defaults to `/data` when that volume exists, otherwise `data`. |
 
 Create the Devin API key from Devin Settings → Service users. The service user needs `ManageOrgSessions` and `ViewOrgSessions`; use the Member role for normal automation.
 

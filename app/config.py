@@ -7,6 +7,13 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def default_data_dir() -> Path:
+    data_volume = Path("/data")
+    if data_volume.exists():
+        return data_volume
+    return Path("data")
+
+
 class Settings(BaseSettings):
     telegram_bot_token: str = Field(default="")
     telegram_webhook_secret: str = Field(default="")
@@ -14,7 +21,7 @@ class Settings(BaseSettings):
     devin_api_key: str = Field(default="")
     devin_org_id: str = Field(default="")
     devin_default_session_id: str = Field(default="")
-    data_dir: Path = Field(default=Path("data"))
+    data_dir: Path = Field(default_factory=default_data_dir)
     devin_base_url: str = Field(default="https://api.devin.ai/v3")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
